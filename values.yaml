@@ -1,0 +1,452 @@
+# Grafana LGTM Stack - Helm Values Configuration
+# Based on successful minikube deployment
+
+# ============================================
+# Mimir Configuration
+# ============================================
+mimir:
+  enabled: true
+
+  # Structured configuration
+  structuredConfig:
+    multitenancy_enabled: false
+    ingester:
+      ring:
+        replication_factor: 1
+    limits:
+      ingestion_rate: 100000
+      ingestion_burst_size: 200000
+      max_global_series_per_user: 1000000
+      max_global_series_per_metric: 100000
+    compactor:
+      compaction_interval: 30m
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+
+  # Resource configuration for minikube
+  resources:
+    distributor:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    ingester:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    querier:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+  # MinIO for object storage (included with mimir-distributed)
+  minio:
+    enabled: true
+    persistence:
+      size: 10Gi
+
+# ============================================
+# Loki Configuration
+# ============================================
+loki:
+  enabled: true
+
+  # Auth disabled for single-tenant setup
+  auth_enabled: false
+
+  # Server configuration
+  server:
+    http_listen_port: 3100
+    grpc_listen_port: 9095
+
+  # Common configuration
+  common:
+    replication_factor: 1
+    path_prefix: /loki
+
+  # Storage configuration
+  storage:
+    type: filesystem
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+  # Schema configuration
+  schema_config:
+    configs:
+      - from: 2020-10-24
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  # Ingester configuration
+  ingester:
+    lifecycler:
+      ring:
+        replication_factor: 1
+        kvstore:
+          store: inmemory
+    chunk_idle_period: 30m
+    chunk_retain_period: 30s
+    max_transfer_retries: 0
+
+  # Limits configuration
+  limits_config:
+    retention_period: 168h # 7 days
+    max_entries_limit_per_query: 5000
+    ingestion_rate_mb: 10
+    ingestion_burst_size_mb: 20
+    per_stream_rate_limit: 3MB
+    per_stream_rate_limit_burst: 15MB
+
+  # Frontend configuration
+  frontend:
+    max_outstanding_per_tenant: 2048
+    compress_responses: true
+
+# Gateway configuration
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: standard
+
+# Enable gateway for simplified access
+gateway:
+  enabled: true
+  replicas: 1
+  service:
+    type: ClusterIP
+  nginxConfig:
+    httpSnippet: |
+      client_max_body_size 50m;
+
+# Monitoring
+monitoring:
+  dashboards:
+    enabled: false
+  alerts:
+    enabled: false
+  serviceMonitor:
+    enabled: false
+  selfMonitoring:
+    enabled: true
+    grafanaAgent:
+      installOperator: false
+
+# Caching
+chunksCache:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+resultsCache:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# ============================================
+# Tempo Configuration
+# ============================================
+tempo:
+  enabled: true
+
+  server:
+    http_listen_port: 3200
+    grpc_listen_port: 9096
+
+  # Storage configuration
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+
+  # Distributor configuration
+  distributor:
+    receivers:
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:14250
+          thrift_binary:
+            endpoint: 0.0.0.0:6832
+          thrift_compact:
+            endpoint: 0.0.0.0:6831
+          thrift_http:
+            endpoint: 0.0.0.0:14268
+      zipkin:
+        endpoint: 0.0.0.0:9411
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      opencensus:
+        endpoint: 0.0.0.0:55678
+
+  # Ingester configuration
+  ingester:
+    max_block_duration: 30m
+    max_block_bytes: 524288000 # 500MB
+
+  # Compactor configuration
+  compactor:
+    compaction:
+      compaction_window: 1h
+      max_compaction_objects: 1000000
+      block_retention: 168h # 7 days
+      compacted_block_retention: 1h
+
+  # Query frontend configuration
+  queryFrontend:
+    search:
+      max_duration: 168h # 7 days
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: standard
+
+# ============================================
+# Grafana Configuration
+# ============================================
+grafana:
+  enabled: true
+
+  replicas: 1
+
+  # Admin credentials (change in production!)
+  admin:
+    user: admin
+    password: admin123
+    existingSecret: ""
+
+  # Persistence
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: standard
+
+  # Datasources configuration
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Mimir
+          type: prometheus
+          access: proxy
+          url: http://mimir-gateway.observability.svc:80/prometheus
+          isDefault: true
+          editable: true
+          jsonData:
+            timeInterval: 60s
+            httpMethod: POST
+            manageAlerts: true
+            prometheusType: Mimir
+            cacheLevel: "High"
+            incrementalQuerying: true
+
+        - name: Loki
+          type: loki
+          access: proxy
+          url: http://loki-gateway.observability.svc.cluster.local/
+          editable: true
+          jsonData:
+            maxLines: 1000
+            derivedFields:
+              - name: TraceID
+                matcherRegex: '"trace_id":"([^"]+)"'
+                url: "$${__value.raw}"
+                datasourceUid: tempo
+
+        - name: Tempo
+          type: tempo
+          access: proxy
+          url: http://tempo.observability.svc:3100
+          editable: true
+          jsonData:
+            tracesToLogs:
+              datasourceUid: loki
+              tags: ["pod", "namespace"]
+              mappedTags: [{ key: "service.name", value: "service" }]
+              mapTagNamesEnabled: false
+              spanStartTimeShift: "1h"
+              spanEndTimeShift: "1h"
+              filterByTraceID: false
+              filterBySpanID: false
+            tracesToMetrics:
+              datasourceUid: mimir
+              tags: [{ key: "service.name", value: "service" }]
+              queries:
+                - name: "Request rate"
+                  query: "sum(rate(traces_spanmetrics_duration_count{$$__tags}[5m]))"
+            serviceMap:
+              datasourceUid: mimir
+            nodeGraph:
+              enabled: true
+            search:
+              hide: false
+            lokiSearch:
+              datasourceUid: loki
+
+  # Dashboard providers
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  # Install dashboards
+  dashboards:
+    default:
+      # Kubernetes / Compute Resources / Cluster
+      k8s-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Mimir
+
+      # Node Exporter Full
+      node-exporter:
+        gnetId: 1860
+        revision: 31
+        datasource: Mimir
+
+      # Loki Dashboard
+      loki-dashboard:
+        gnetId: 13407
+        revision: 1
+        datasource: Loki
+
+  # Enable sidecar for ConfigMap dashboards
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      folder: /tmp/dashboards
+      provider:
+        name: sidecarProvider
+        orgid: 1
+        folder: ""
+        type: file
+        disableDelete: false
+        allowUiUpdates: true
+    datasources:
+      enabled: true
+      label: grafana_datasource
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Enable plugin installation
+  plugins:
+    - grafana-clock-panel
+    - grafana-piechart-panel
+
+# ============================================
+# Grafana Agent Configuration (for log/metric collection)
+# ============================================
+grafana-agent:
+  enabled: true
+  agent:
+    mode: "flow"
+    configMap:
+      name: grafana-agent-config
+      key: config.river
+    extraArgs:
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/tmp/agent
+
+  controller:
+    type: daemonset
+    replicas: 1
+
+# ============================================
+# Global Configuration
+# ============================================
+global:
+  # Node selector for all components
+  nodeSelector: {}
+
+  # Tolerations for all components
+  tolerations: []
+
+  # Affinity for all components
+  affinity: {}
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+# Namespace configuration
+namespace:
+  name: observability
+  create: true
+  labels:
+    app.kubernetes.io/name: observability
+    app.kubernetes.io/component: monitoring
+
+# ============================================
+# Resource Quotas (optional, for production)
+# ============================================
+resourceQuota:
+  enabled: false
+  hard:
+    requests.cpu: "10"
+    requests.memory: 20Gi
+    limits.cpu: "20"
+    limits.memory: 40Gi
+    persistentvolumeclaims: "20"
+    pods: "50"
+    services: "20"

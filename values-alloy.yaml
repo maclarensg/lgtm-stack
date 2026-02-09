@@ -1,0 +1,161 @@
+# Grafana Alloy - Telemetry collector
+# Traces -> Tempo, Logs -> Loki, Metrics -> Mimir
+
+alloy:
+  extraPorts:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+  configMap:
+    create: true
+    content: |
+      // ============================================
+      // OTLP Receiver - receives traces from apps
+      // ============================================
+      otelcol.receiver.otlp "default" {
+        grpc {
+          endpoint = "0.0.0.0:4317"
+        }
+        http {
+          endpoint = "0.0.0.0:4318"
+        }
+        output {
+          traces  = [otelcol.exporter.otlphttp.tempo.input]
+        }
+      }
+
+      // ============================================
+      // Traces -> Tempo
+      // ============================================
+      otelcol.exporter.otlphttp "tempo" {
+        client {
+          endpoint = "http://tempo.observability.svc:4318"
+          tls {
+            insecure = true
+          }
+        }
+      }
+
+      // ============================================
+      // Metrics -> Mimir (scrape Prometheus endpoints)
+      // ============================================
+      prometheus.scrape "helloworld" {
+        targets = [{
+          __address__ = "helloworld.observability.svc:8080",
+          job         = "helloworld",
+        }]
+        forward_to = [prometheus.remote_write.mimir.receiver]
+        scrape_interval = "15s"
+      }
+
+      prometheus.remote_write "mimir" {
+        endpoint {
+          url = "http://mimir-gateway.observability.svc:80/api/v1/push"
+        }
+      }
+
+      // ============================================
+      // Logs -> Loki (collect pod logs)
+      // ============================================
+      discovery.kubernetes "pods" {
+        role = "pod"
+        namespaces {
+          names = ["observability"]
+        }
+      }
+
+      discovery.relabel "helloworld_pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        // Keep only helloworld pods
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          regex         = "helloworld"
+          action        = "keep"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.helloworld_pods.output
+        forward_to = [loki.process.json_logs.receiver]
+      }
+
+      loki.process "json_logs" {
+        // Extract fields from JSON logs
+        stage.json {
+          expressions = {
+            level   = "level",
+            msg     = "msg",
+            trace_id = "trace_id",
+          }
+        }
+
+        stage.labels {
+          values = {
+            level = "",
+          }
+        }
+
+        stage.label_drop {
+          values = ["filename"]
+        }
+
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki-gateway.observability.svc/loki/api/v1/push"
+        }
+      }
+
+# Service for receiving OTLP data
+service:
+  type: ClusterIP
+
+# Controller runs as a Deployment (not DaemonSet)
+controller:
+  type: deployment
+  replicas: 1
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Service account for Kubernetes discovery
+serviceAccount:
+  create: true
+
+# RBAC for pod log collection
+rbac:
+  create: true

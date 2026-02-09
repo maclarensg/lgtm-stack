@@ -1,0 +1,79 @@
+# Grafana Loki - Official Chart v6.52.0
+# Log aggregation backend
+
+deploymentMode: SingleBinary
+
+# Disable other modes
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Loki configuration
+loki:
+  auth_enabled: false
+
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  schemaConfig:
+    configs:
+      - from: 2024-01-01
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  limits_config:
+    retention_period: 168h
+    max_entries_limit_per_query: 5000
+    ingestion_rate_mb: 10
+    ingestion_burst_size_mb: 20
+
+# Single binary mode
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: standard
+
+# Gateway
+gateway:
+  enabled: true
+  replicas: 1
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - host: loki.192-168-49-2.nip.io
+        paths:
+          - path: /
+            pathType: Prefix
+
+# Caching
+chunksCache:
+  enabled: true
+  replicas: 1
+
+resultsCache:
+  enabled: true
+  replicas: 1
+
+# Monitoring
+monitoring:
+  selfMonitoring:
+    enabled: false
+  dashboards:
+    enabled: false
+  alerts:
+    enabled: false
+  serviceMonitor:
+    enabled: false

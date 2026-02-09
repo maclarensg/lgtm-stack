@@ -1,0 +1,265 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helloworld-dashboard
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  helloworld.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 10,
+          "title": "Overview",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 10 },
+                  { "color": "red", "value": 50 }
+                ]
+              },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "title": "Request Rate",
+          "type": "stat",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "sum(rate(helloworld_requests_total[5m]))",
+              "legendFormat": "req/s"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 0.01 }
+                ]
+              },
+              "unit": "percentunit"
+            }
+          },
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+          "id": 2,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "title": "Error Rate",
+          "type": "stat",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "sum(rate(helloworld_requests_total{status=\"500\"}[5m])) / sum(rate(helloworld_requests_total[5m]))",
+              "legendFormat": "errors"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.5 },
+                  { "color": "red", "value": 1 }
+                ]
+              },
+              "unit": "s"
+            }
+          },
+          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+          "id": 3,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "title": "Avg Latency (p50)",
+          "type": "stat",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum(rate(helloworld_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.5 },
+                  { "color": "red", "value": 1 }
+                ]
+              },
+              "unit": "none"
+            }
+          },
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+          "id": 4,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "title": "In-Flight Requests",
+          "type": "stat",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "helloworld_in_flight_requests",
+              "legendFormat": "in-flight"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+          "id": 11,
+          "title": "Metrics",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2,
+                "pointSize": 5,
+                "spanNulls": false,
+                "stacking": { "mode": "none" }
+              },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 5,
+          "title": "Request Rate by Status",
+          "type": "timeseries",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "sum by (status) (rate(helloworld_requests_total[5m]))",
+              "legendFormat": "HTTP {{status}}"
+            }
+          ]
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2,
+                "pointSize": 5,
+                "spanNulls": false,
+                "stacking": { "mode": "none" }
+              },
+              "unit": "s"
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "id": 6,
+          "title": "Request Latency Percentiles",
+          "type": "timeseries",
+          "targets": [
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum(rate(helloworld_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50"
+            },
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum(rate(helloworld_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95"
+            },
+            {
+              "datasource": { "type": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum(rate(helloworld_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p99"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+          "id": 12,
+          "title": "Logs",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "" },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+          "id": 7,
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "sortOrder": "Descending",
+            "dedupStrategy": "none"
+          },
+          "title": "Application Logs",
+          "type": "logs",
+          "targets": [
+            {
+              "datasource": { "type": "loki" },
+              "expr": "{app=\"helloworld\"}",
+              "legendFormat": ""
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["helloworld", "application"],
+      "templating": { "list": [] },
+      "time": { "from": "now-30m", "to": "now" },
+      "title": "Hello World App",
+      "uid": "helloworld-app",
+      "version": 1
+    }

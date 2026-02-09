@@ -1,0 +1,58 @@
+# Grafana Tempo - Official Chart v1.24.4
+# Distributed tracing backend
+
+# Persistence
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClassName: standard
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+# Trace receivers
+traces:
+  jaeger:
+    grpc:
+      enabled: true
+    thriftBinary:
+      enabled: true
+    thriftCompact:
+      enabled: true
+    thriftHttp:
+      enabled: true
+  zipkin:
+    enabled: true
+  otlp:
+    http:
+      enabled: true
+    grpc:
+      enabled: true
+  opencensus:
+    enabled: true
+
+# Metrics generator - required for TraceQL metrics and service graph
+tempo:
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: "http://mimir-gateway.observability.svc:80/api/v1/push"
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics
+          - local-blocks
+
+# Retention
+compactor:
+  config:
+    compaction:
+      compaction_window: 1h
+      block_retention: 168h

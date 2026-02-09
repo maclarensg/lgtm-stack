@@ -1,0 +1,54 @@
+# Grafana Mimir - Official Chart v6.0.5
+# Metrics storage backend
+
+mimir:
+  structuredConfig:
+    multitenancy_enabled: false
+    ingester:
+      ring:
+        replication_factor: 1
+    limits:
+      ingestion_rate: 100000
+      ingestion_burst_size: 200000
+      max_global_series_per_user: 1000000
+
+# Resources for minikube
+resources:
+  distributor:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  ingester:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  querier:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# MinIO for object storage
+minio:
+  enabled: true
+  persistence:
+    size: 10Gi
+
+# Ingress
+gateway:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - host: mimir.192-168-49-2.nip.io
+        paths:
+          - path: /
+            pathType: Prefix

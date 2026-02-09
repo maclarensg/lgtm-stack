@@ -1,0 +1,93 @@
+# LGTM Stack Taskfile
+# Official Grafana Helm Charts
+
+version: "3"
+
+vars:
+  NAMESPACE: observability
+
+tasks:
+  up:
+    desc: Deploy LGTM stack
+    cmds:
+      - helm repo add grafana https://grafana.github.io/helm-charts --force-update
+      - helm repo update
+      - kubectl create namespace {{.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
+      - helm upgrade --install mimir grafana/mimir-distributed -n {{.NAMESPACE}} -f values-mimir.yaml --wait --timeout 10m
+      - helm upgrade --install loki grafana/loki -n {{.NAMESPACE}} -f values-loki.yaml --wait --timeout 5m
+      - helm upgrade --install tempo grafana/tempo -n {{.NAMESPACE}} -f values-tempo.yaml --wait --timeout 5m
+      - helm upgrade --install grafana grafana/grafana -n {{.NAMESPACE}} -f values-grafana.yaml --wait --timeout 5m
+      - helm upgrade --install alloy grafana/alloy -n {{.NAMESPACE}} -f values-alloy.yaml --wait --timeout 5m
+      - |
+        echo "✅ LGTM Stack deployed!"
+        echo ""
+        echo "Grafana: http://grafana.192-168-49-2.nip.io"
+        echo "Username: admin"
+        echo "Password: $(kubectl get secret grafana -n {{.NAMESPACE}} -o jsonpath="{.data.admin-password}" | base64 --decode)"
+
+  down:
+    desc: Remove LGTM stack
+    cmds:
+      - helm uninstall alloy -n {{.NAMESPACE}} || true
+      - kubectl delete -f helloworld/k8s.yaml --ignore-not-found=true || true
+      - kubectl delete -f helloworld/dashboard.yaml --ignore-not-found=true || true
+      - helm uninstall grafana -n {{.NAMESPACE}} || true
+      - helm uninstall tempo -n {{.NAMESPACE}} || true
+      - helm uninstall loki -n {{.NAMESPACE}} || true
+      - helm uninstall mimir -n {{.NAMESPACE}} || true
+      - kubectl delete namespace {{.NAMESPACE}} --ignore-not-found=true
+      - echo "✅ LGTM stack removed"
+
+  status:
+    desc: Show stack status
+    cmds:
+      - kubectl get pods -n {{.NAMESPACE}}
+
+  app-build:
+    desc: Build helloworld Docker image in minikube
+    cmds:
+      - eval $(minikube docker-env) && docker build -t helloworld:latest helloworld/
+      - echo "✅ helloworld image built"
+
+  app-deploy:
+    desc: Deploy helloworld app and dashboard
+    cmds:
+      - kubectl apply -f helloworld/k8s.yaml
+      - kubectl apply -f helloworld/dashboard.yaml
+      - kubectl wait --for=condition=ready pod -l app=helloworld -n {{.NAMESPACE}} --timeout=60s
+      - echo "✅ helloworld deployed"
+
+  app-down:
+    desc: Remove helloworld app
+    cmds:
+      - kubectl delete -f helloworld/dashboard.yaml --ignore-not-found=true
+      - kubectl delete -f helloworld/k8s.yaml --ignore-not-found=true
+      - echo "✅ helloworld removed"
+
+  app-logs:
+    desc: Tail helloworld logs
+    cmds:
+      - kubectl logs -n {{.NAMESPACE}} -l app=helloworld -f
+
+  app-traffic:
+    desc: Generate test traffic to helloworld
+    cmds:
+      - |
+        echo "Sending 50 requests..."
+        kubectl run traffic-gen -n {{.NAMESPACE}} --rm -i --image=busybox --restart=Never -- sh -c 'for i in $(seq 1 50); do wget -qO- http://helloworld.observability.svc:8080/hello?name=User$i 2>&1; sleep 0.3; done'
+        echo "✅ Traffic generated"
+
+  test-login:
+    desc: Test Grafana login
+    cmds:
+      - |
+        PASSWORD=$(kubectl get secret grafana -n {{.NAMESPACE}} -o jsonpath="{.data.admin-password}" | base64 --decode)
+        echo "Testing Grafana login..."
+        echo "Username: admin"
+        echo "Password: $PASSWORD"
+        RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://grafana.192-168-49-2.nip.io/api/login -H "Content-Type: application/json" -d "{\"user\":\"admin\",\"password\":\"$PASSWORD\"}")
+        if [ "$RESPONSE" = "200" ]; then
+          echo "✅ Login successful!"
+        else
+          echo "❌ Login failed (HTTP $RESPONSE)"
+        fi
